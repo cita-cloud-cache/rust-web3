@@ -1,6 +1,7 @@
 //! Signing capabilities and utilities.
 
 use crate::types::H256;
+use async_trait::async_trait;
 
 /// Error during signing.
 #[derive(Debug, derive_more::Display, PartialEq, Clone)]
@@ -53,6 +54,7 @@ mod feature_gated {
     ///
     /// If it's enough to pass a reference to `SecretKey` (lifetimes) than you can use `SecretKeyRef`
     /// wrapper.
+    #[async_trait]
     pub trait Key {
         /// Sign given message and include chain-id replay protection.
         ///
@@ -63,7 +65,7 @@ mod feature_gated {
 
         /// Sign given message without manipulating V-value; used for typed transactions
         /// (AccessList and EIP-1559)
-        fn sign_message(&self, message: &[u8]) -> Result<Signature, SigningError>;
+        async fn sign_message(&self, message: &[u8]) -> Result<Signature, SigningError>;
 
         /// Get public address that this key represents.
         fn address(&self) -> Address;
@@ -95,41 +97,6 @@ mod feature_gated {
 
         fn deref(&self) -> &Self::Target {
             self.key
-        }
-    }
-
-    impl<T: Deref<Target = SecretKey>> Key for T {
-        fn sign(&self, message: &[u8], chain_id: Option<u64>) -> Result<Signature, SigningError> {
-            let message = Message::from_digest_slice(message).map_err(|_| SigningError::InvalidMessage)?;
-            let (recovery_id, signature) = CONTEXT.sign_ecdsa_recoverable(&message, self).serialize_compact();
-
-            let standard_v = recovery_id.to_i32() as u64;
-            let v = if let Some(chain_id) = chain_id {
-                // When signing with a chain ID, add chain replay protection.
-                standard_v + 35 + chain_id * 2
-            } else {
-                // Otherwise, convert to 'Electrum' notation.
-                standard_v + 27
-            };
-            let r = H256::from_slice(&signature[..32]);
-            let s = H256::from_slice(&signature[32..]);
-
-            Ok(Signature { v, r, s })
-        }
-
-        fn sign_message(&self, message: &[u8]) -> Result<Signature, SigningError> {
-            let message = Message::from_digest_slice(message).map_err(|_| SigningError::InvalidMessage)?;
-            let (recovery_id, signature) = CONTEXT.sign_ecdsa_recoverable(&message, self).serialize_compact();
-
-            let v = recovery_id.to_i32() as u64;
-            let r = H256::from_slice(&signature[..32]);
-            let s = H256::from_slice(&signature[32..]);
-
-            Ok(Signature { v, r, s })
-        }
-
-        fn address(&self) -> Address {
-            secret_key_address(self)
         }
     }
 
@@ -165,6 +132,7 @@ mod feature_gated {
     }
 
     /// Gets the public address of a private key.
+    #[allow(dead_code)]
     pub(crate) fn secret_key_address(key: &SecretKey) -> Address {
         let secp = &*CONTEXT;
         let public_key = PublicKey::from_secret_key(secp, key);

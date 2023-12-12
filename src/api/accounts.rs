@@ -117,7 +117,7 @@ mod accounts_signing {
                 max_priority_fee_per_gas,
             };
 
-            let signed = tx.sign(key, chain_id);
+            let signed = tx.sign(key, chain_id).await;
             Ok(signed)
         }
 
@@ -322,7 +322,7 @@ mod accounts_signing {
         }
 
         /// Sign and return a raw signed transaction.
-        pub fn sign(self, sign: impl signing::Key, chain_id: u64) -> SignedTransaction {
+        pub async fn sign(self, sign: impl signing::Key, chain_id: u64) -> SignedTransaction {
             let adjust_v_value = matches!(self.transaction_type.map(|t| t.as_u64()), Some(LEGACY_TX_ID) | None);
 
             let encoded = self.encode(chain_id, None);
@@ -333,7 +333,7 @@ mod accounts_signing {
                 sign.sign(&hash, Some(chain_id))
                     .expect("hash is non-zero 32-bytes; qed")
             } else {
-                sign.sign_message(&hash).expect("hash is non-zero 32-bytes; qed")
+                sign.sign_message(&hash).await.expect("hash is non-zero 32-bytes; qed")
             };
 
             let signed = self.encode(chain_id, Some(&signature));
